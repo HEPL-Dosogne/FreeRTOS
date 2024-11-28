@@ -1,0 +1,109 @@
+/**
+ * @file ex12_saveprint_mutex.ino
+ * @brief safe Serial.print using a mutex - solving rentrancy issue
+ * safe print is used by two tasks with the same code.
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date 2/9/2021   
+ */
+#include <Arduino_FreeRTOS.h>
+#include <semphr.h>
+
+/* The task to be created.  Two instances of this task are created. */
+static void prvPrintTask( void *pvParameters );
+
+/* The function that uses a mutex to control access to standard out. */
+static void prvNewPrintString( const char *pcString );
+/*-----------------------------------------------------------*/
+
+/* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
+mutex type semaphore that is used to ensure mutual exclusive access to stdout. */
+SemaphoreHandle_t xMutex;
+
+// the setup function runs once when you press reset or power the board
+void setup() {
+
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+ 
+   /* Before a semaphore is used it must be explicitly created.  In this example
+  a mutex type semaphore is created. */
+    xMutex = xSemaphoreCreateMutex();
+
+  /* The tasks are going to use a pseudo random delay, 
+   *  the generator is seeded here. */
+  srand( 567 );
+
+  /* Check the semaphore was created successfully. */
+  if( xMutex != NULL )
+   {
+    /* Create two instances of the tasks that attempt to write stdout.  The
+    string they attempt to write is passed in as the task parameter.  The tasks
+    are created at different priorities so some pre-emption will occur. */
+   xTaskCreate( prvPrintTask, "Print1", 200, (void*)"Task 1 *****", 1, NULL );
+   xTaskCreate( prvPrintTask, "Print2", 200, (void*)"Task 2 -----", 2, NULL );
+   }
+   
+  //Start the scheduler so our tasks start executing.
+  vTaskStartScheduler(); // not necessary in last implementation
+                 // present in the initVariant() function of the Free RTOS library
+   
+}
+
+void loop()
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+
+/*-----------------------------------------------------------*/
+
+static void prvNewPrintString( const char *pcString ) // this is a function, not a task.
+{
+  
+  /* The semaphore is created before the scheduler is started so already
+  exists by the time this task executes.
+
+  Attempt to take the semaphore, blocking indefinitely if the mutex is not
+  available immediately.  The call to xSemaphoreTake() will only return when
+  the semaphore has been successfully obtained so there is no need to check the
+  return value.  If any other delay period was used then the code must check
+  that xSemaphoreTake() returns pdTRUE before accessing the resource (in this
+  case standard out. */
+  xSemaphoreTake( xMutex, portMAX_DELAY );
+  
+  /* The following line will only execute once the semaphore has been
+  successfully obtained - so standard output can be accessed without any problems. */
+  Serial.println(pcString);
+  Serial.flush();
+  
+  xSemaphoreGive( xMutex );
+
+ }
+/*-----------------------------------------------------------*/
+
+static void prvPrintTask( void *pvParameters )
+{
+char *pcStringToPrint;
+
+  /* Two instances of this task are created so the string the task will send
+  to prvNewPrintString() is passed in the task parameter.  Cast this to the
+  required type. */
+  pcStringToPrint = ( char * ) pvParameters;
+
+while(1)
+  {
+    /* Print out the string using the newly defined function. */
+    prvNewPrintString( pcStringToPrint );
+   
+    /* Wait a pseudo random time.  Note that rand() is not necessarily
+    re-entrant, but in this case it does not really matter as the code does
+    not care what value is returned.  In a more secure application a version
+    of rand() that is known to be re-entrant should be used - or calls to
+    rand() should be protected using a critical section. */
+    vTaskDelay( ( rand() & 0x1FF ) );
+  }
+}
