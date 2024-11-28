@@ -1,0 +1,72 @@
+/**
+ * @file ex04b_2tsk_tskdel.ino
+ * @brief 2 tasks with different priority and a delay by FreeRTOS
+ * uses the same code for both tasks
+ * delay start at end of task
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date 11/8/2021   
+ */
+#include <Arduino_FreeRTOS.h>
+
+const char pcTextForTask1[] = "Task 1 is running";
+const char pcTextForTask2[] = "Task 2 is running";
+
+/* The task functions. */
+void vTask( void *pvParameters );
+
+
+
+// the setup function runs once when you press reset or power the board
+void setup() 
+{
+// initialize serial communication at 9600 bits per second:
+Serial.begin(9600);
+
+// Now set up two tasks to run independently.
+//Create one of the two tasks. 
+ xTaskCreate(  vTask,   // Pointer to the function that implements the task.
+    "Task 1", // Text name for the task.  This is to facilitate debugging only.
+    200,      // This stack size could be adjusted by reading the Stack Highwater
+    (void*)pcTextForTask1,   // Pass the text to be printed in as the task parameter. 
+    2,        // Priority from 0 (min) to (configMAX_PRIORITIES - 1) (max)
+    NULL );   // We are not using the task handle. 
+  
+  /* Create the other task in exactly the same way. */
+  xTaskCreate( vTask, "Task 2", 200, (void*)pcTextForTask2, 1, NULL ); 
+
+//Start the scheduler so our tasks start executing.
+vTaskStartScheduler(); // not necessary in last implementation
+                 // present in the initVariant() function of the Free RTOS library
+}
+
+
+void loop()
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+
+void vTask( void *pvParameters )
+{
+const char* pcTaskName;
+
+/* The string to print out is passed in via the parameter.  
+ *  Cast this to a  character pointer. */
+ pcTaskName = (char * ) pvParameters;
+ 
+//As always in embedded systems, this task is implemented in an infinite loop.
+while(1)
+  {
+    //Print out the name of this task. 
+     Serial.println( pcTaskName );
+    /* Delay for some time.  This time we use a call to vTaskDelay() which
+    puts the task into the Blocked state until the delay period has expired.
+    The delay period is specified in 'ticks'. */
+    vTaskDelay( 1000 / portTICK_PERIOD_MS );
+  }
+}
+/*-----------------------------------------------------------*/
