@@ -1,0 +1,167 @@
+/**
+ * @file ex10_queue_21P_1C.ino
+ * @brief two producers (Sender) tasks with priority=1 
+ * and 1 customer (Receiver) task with priority=2
+ * Producers writes periodicaly numeric data into queue
+ * Customer wait until something is in the queue and displays it
+ * indicating the origin
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date 31/8/2021   
+ */
+#include <Arduino_FreeRTOS.h>
+#include <queue.h>
+
+#define ID1 1
+#define ID2 2
+#define ID3 0
+
+
+/* The tasks to be created.  Two instances are created of the sender task while
+only a single instance is created of the receiver task. */
+static void vSenderTask( void *pvParameters );
+static void vReceiverTask( void *pvParameters );
+
+struct data_for_cust
+  {
+  uint8_t id;
+  uint16_t value;
+  };
+
+/* Declare a variable of type QueueHandle_t.  This is used to store 
+ a reference to the queue that is accessed by all three tasks. */
+QueueHandle_t xQueue;
+
+// the setup function runs once when you press reset or power the board
+void setup() 
+{
+// initialize serial communication at 9600 bits per second:
+Serial.begin(9600);
+
+xQueue = xQueueCreate( 5, sizeof( data_for_cust ) ); // 5 data_for_cust elements
+if( xQueue != NULL ) // if queue object is created
+  {
+   /* Create the tasks that will write to the queue with priority 1. */
+   xTaskCreate( vProducerTask1, "Producer1", 200, NULL, 1, NULL ); 
+   xTaskCreate( vProducerTask2, "Producer2", 200, NULL, 1, NULL ); 
+
+   /* Create the task that will read from the queue.  The task is created with
+   priority 2, so above the priority of the sender task. */
+   xTaskCreate( vCustomerTask, "Consumer", 200, NULL, 2, NULL );
+         
+  //Start the scheduler so our tasks start executing.
+  vTaskStartScheduler(); // not necessary in last implementation
+                 // present in the initVariant() function of the Free RTOS library
+  }
+  else 
+   Serial.println( "Could not create the queue." );
+}
+
+void loop()
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+static void vProducerTask1( void *pvParameters )
+{
+data_for_cust data_to_send;
+uint32_t delay1_send = 250 / portTICK_PERIOD_MS;
+
+data_to_send.id = ID1;
+data_to_send.value = 0;
+
+//As always in embedded systems, this task is implemented in an infinite loop.
+while(1)
+  {
+    /* The first parameter is the queue to which data is being sent.  The
+    queue was created before the scheduler was started, so before this task
+    started to execute.
+
+    The second parameter is the address of the data to be sent.
+
+    The third parameter is the Block time, the time the task should be kept
+    in the Blocked state to wait for space to become available on the queue
+    should the queue already be full.  In this case we will block indefinitively
+    until the customer frees some data */
+   xQueueSendToBack( xQueue, &data_to_send, portMAX_DELAY );
+
+   data_to_send.value++;    
+   
+   vTaskDelay(delay1_send);
+  }
+}
+/*-----------------------------------------------------------*/
+
+static void vProducerTask2( void *pvParameters )
+{
+data_for_cust data_to_send;
+uint32_t delay2_send = 500 / portTICK_PERIOD_MS;
+
+data_to_send.id = ID2;
+data_to_send.value = 0;
+
+//As always in embedded systems, this task is implemented in an infinite loop.
+while(1)
+  {
+    /* The first parameter is the queue to which data is being sent.  The
+    queue was created before the scheduler was started, so before this task
+    started to execute.
+
+    The second parameter is the address of the data to be sent.
+
+    The third parameter is the Block time, the time the task should be kept
+    in the Blocked state to wait for space to become available on the queue
+    should the queue already be full.  In this case we will block indefinitively
+    until the customer frees some data */
+   xQueueSendToBack( xQueue, &data_to_send, portMAX_DELAY );
+
+   data_to_send.value++;    
+   
+   vTaskDelay(delay2_send);
+  }
+}
+/*-----------------------------------------------------------*/
+
+
+static void vCustomerTask( void *pvParameters )
+{
+/* Declare the variable that will hold the values received from the queue. */
+data_for_cust data_received;
+
+
+//As always in embedded systems, this task is implemented in an infinite loop.
+while(1)
+  {
+    /* The first parameter is the queue from which data is to be received.  The
+    queue is created before the scheduler is started, and therefore before this
+    task runs for the first time.
+
+    The second parameter is the buffer into which the received data will be
+    placed.  In this case the buffer is simply the address of a variable that
+    has the required size to hold the received data.
+
+    the last parameter is the block time, the maximum amount of time that the
+    task should remain in the Blocked state to wait for data to be available 
+    should the queue already be empty. */
+    xQueueReceive( xQueue, (data_for_cust*)&data_received, portMAX_DELAY);
+
+   switch (data_received.id)
+     {
+     case ID1:
+      Serial.print( "Received from ID1 : ");
+      Serial.println( data_received.value);
+      break;
+      
+     case ID2:
+      Serial.print( "Received from ID2 : ");
+      Serial.println( data_received.value);
+      break;
+  
+    default:
+     Serial.println( "Incorrect ID" );
+     }
+  }
+}
