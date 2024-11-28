@@ -1,0 +1,97 @@
+/**
+ * @file ex11_sem_bin.ino
+ * @brief use binary semaphore from a periodic task (vPeriodicTask)
+ * to synchronize execution of another task (vSyncTask)
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date 2/9/2021   
+ */
+#include <Arduino_FreeRTOS.h>
+#include <semphr.h>
+
+/* The tasks to be created. */
+static void vSyncTask( void *pvParameters );
+static void vPeriodicTask( void *pvParameters );
+
+/*-----------------------------------------------------------*/
+
+/* Declare a variable of type SemaphoreHandle_t.  This is used to reference the
+semaphore that is used to synchronize a task with another task. */
+SemaphoreHandle_t xBinarySemaphore;
+
+// the setup function runs once when you press reset or power the board
+void setup() 
+{
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+
+  /* Before a semaphore is used it must be explicitly created.  
+  In this example a binary semaphore is created. */
+  xBinarySemaphore = xSemaphoreCreateBinary();
+
+  /* Check the semaphore was created successfully. */
+  if( xBinarySemaphore != NULL )
+  {
+    /* Create the sync task.  This is the task that will be synchronized
+    by the periodic task.  The sync task is created with a high priority to
+    ensure it runs immediately after the sync event.  In this case a
+    priority of 3 is chosen. */
+    xTaskCreate( vSyncTask, "Synchronized", 200, NULL, 3, NULL );
+
+    /* Create the task that will periodically generate synchronization.
+    This is created with a priority below the sync task to ensure it will
+    get preempted each time the sync task exits the Blocked state. */
+    xTaskCreate( vPeriodicTask, "Periodic", 200, NULL, 1, NULL );
+         
+  //Start the scheduler so our tasks start executing.
+  vTaskStartScheduler(); // not necessary in last implementation
+                 // present in the initVariant() function of the Free RTOS library
+  } 
+}
+
+void loop()
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+
+static void vSyncTask( void *pvParameters )
+{
+
+ //As always in embedded systems, this task is implemented in an infinite loop.
+ while(1)
+  {
+    /* Use the semaphore to wait for the event.  The semaphore was created
+    before the scheduler was started so before this task ran for the first
+    time.  The task blocks indefinitely meaning this function call will only
+    return once the semaphore has been successfully obtained - so there is no
+    need to check the returned value. */
+    xSemaphoreTake( xBinarySemaphore, portMAX_DELAY );
+
+    /* To get here the sync event must have occurred.  Process the event (in this
+    case we just print out a message). */
+    Serial.println( "[vSyncTask] : I'm processing sync event." );
+  }
+}
+/*-----------------------------------------------------------*/
+
+static void vPeriodicTask( void *pvParameters )
+{
+
+//As always in embedded systems, this task is implemented in an infinite loop.
+while(1)
+  {
+    /* This task unblock the SyncTask periodicaly */
+    vTaskDelay( 1000 / portTICK_PERIOD_MS );
+
+    /* Generate the synchronization, printing a message both before hand and
+    afterwards so the sequence of execution is evident from the output. */
+    Serial.println( "[PeriodicTask] : I'm about give semaphore ." );
+    xSemaphoreGive( xBinarySemaphore);
+    Serial.println( "[PeriodicTask] : I gain control again" );
+    Serial.println("");
+  }
+}
