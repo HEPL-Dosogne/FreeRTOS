@@ -1,0 +1,100 @@
+/**
+ * @file ex01_2tsk_soft_del.ino
+ * @brief 2 tasks with same priority and a software delay loop
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date 11/8/2021   
+ */
+#include <Arduino_FreeRTOS.h>
+
+#define PROBE 5
+
+/* Used as a loop counter to create a very crude delay. */
+#define mainDELAY_LOOP_COUNT  400000L // 
+
+/* The task functions. */
+void vTask1( void *pvParameters );
+void vTask2( void *pvParameters );
+
+
+// The setup function runs once when you press reset or power on the board
+void setup() 
+{
+// initialize serial communication at 9600 bits/s:
+Serial.begin(9600);
+pinMode(40,OUTPUT);
+// Now set up two tasks, with same priority to run independently.
+
+//Create one of the two tasks. 
+ xTaskCreate(  vTask1,   // Pointer to the function that implements the task.
+    "Task 1", // Text name for the task.  This is to facilitate debugging only.
+    200,      // This stack size could be adjusted by reading the Stack Highwater
+    NULL,     // We are not using the task parameter. 
+    1,        // Priority from 0 (min) to (configMAX_PRIORITIES - 1) (max)
+    NULL );   // We are not using the task handle. 
+
+// for Higwater see : uxTaskGetStackHighWaterMark in FreeRTOS documentation
+
+//Create the other task in exactly the same way.
+xTaskCreate( vTask2, "Task 2", 200, NULL, 1, NULL );
+
+
+//Start the scheduler so our tasks start executing.
+vTaskStartScheduler(); // not necessary in last implementation
+                 // present in the initVariant() function of the Free RTOS library
+
+}
+
+void loop()
+{
+// Empty. Things are done in tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+
+void vTask1( void *pvParameters )
+{
+const char pcTaskName[] = "Task 1 is running"; 
+volatile uint32_t ul; 
+
+//As always in embedded systems, this task is implemented in an infinite loop. 
+while(1)
+  {
+  //Print out the name of this task. 
+  Serial.println( pcTaskName );
+  
+  //Delay for a period. 
+    for( ul = 0; ul < mainDELAY_LOOP_COUNT; ul++ )
+    {
+      /* This loop is just a very crude delay implementation.  There is
+      nothing to do in here.  Later exercises will replace this crude
+      loop with a more appropiate delay/sleep function. */
+      digitalWrite(40,HIGH);
+    }
+  }
+}
+/*-----------------------------------------------------------*/
+
+void vTask2( void *pvParameters )
+{
+const char pcTaskName[] = "Task 2 is running"; 
+volatile uint32_t ul; 
+
+//As always in embedded systems, this task is implemented in an infinite loop.  
+while(1)
+  {
+  //Print out the name of this task. 
+  Serial.println( pcTaskName );
+  
+  //Delay for a period. 
+    for( ul = 0; ul < mainDELAY_LOOP_COUNT; ul++ )
+    {
+      /* This loop is just a very crude delay implementation.  There is
+      nothing to do in here.  Later exercises will replace this crude
+      loop with a more appropiatedelay/sleep function. */
+      digitalWrite(40,LOW);
+    }
+  }
+}
