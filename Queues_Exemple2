@@ -1,0 +1,130 @@
+/**
+ * @file ex10_queue_1P_1C_full_test.ino
+ * @brief one producer (Sender)tasks with priority=1 and one customer (Receiver) task with priority=2
+ * Producers write numeric data into queue until queue is full and continue writing when some place is available
+ * Customer reads the queue periodicaly and displays what it receives
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date31   
+ */
+#include <Arduino_FreeRTOS.h>
+#include <queue.h>
+
+/* The tasks to be created.  Two instances are created of the sender task while
+only a single instance is created of the receiver task. */
+static void vSenderTask( void *pvParameters );
+static void vReceiverTask( void *pvParameters );
+
+/*-----------------------------------------------------------*/
+
+/* Declare a variable of type QueueHandle_t.  This is used to store the queue
+that is accessed by all three tasks. */
+QueueHandle_t xQueue;
+
+
+// the setup function runs once when you press reset or power the board
+void setup() 
+{
+
+// initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+
+xQueue = xQueueCreate( 5, sizeof( uint32_t ) ); // 5 uint32_t elements
+
+if( xQueue != NULL )// if queue object is created
+  {
+ /* Create two instances of the task that will write to the queue.  The
+    parameter is used to pass the value that the task should write to the queue,
+    so one task will continuously write 100 to the queue while the other task
+    will continuously write 200 to the queue.  Both tasks are created at
+    priority 1. */
+    xTaskCreate( vProducerTask, "Producer", 200, NULL, 1, NULL );
+    
+
+    /* Create the task that will read from the queue.  The task is created with
+    priority 2, so above the priority of the sender tasks. */
+    xTaskCreate( vCustomerTask, "Consumer", 200, NULL, 1, NULL );
+
+         
+    //Start the scheduler so our tasks start executing.
+   vTaskStartScheduler(); // not necessary in last implementation
+                 // present in the initVariant() function of the Free RTOS library  
+   }
+  else 
+   Serial.println( "Could not create the queue." );
+}
+
+void loop()
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+static void vProducerTask( void *pvParameters )
+{
+BaseType_t xStatus;
+uint32_t lValueToSend = 0UL;
+
+//As always in embedded systems, this task is implemented in an infinite loop.
+while(1)
+  {
+    /* The first parameter is the queue to which data is being sent.  The
+    queue was created before the scheduler was started, so before this task
+    started to execute.
+
+    The second parameter is the address of the data to be sent.
+
+    The third parameter is the Block time, the time the task should be kept
+    in the Blocked state to wait for space to become available on the queue
+    should the queue already be full.  In this case we will block until the customer frees some data */
+    xStatus = xQueueSendToBack( xQueue, &lValueToSend, portMAX_DELAY );
+    lValueToSend++;    
+
+    // no delay here, we send until queue is full
+  }
+}
+/*-----------------------------------------------------------*/
+
+static void vCustomerTask( void *pvParameters )
+{
+/* Declare the variable that will hold the values received from the queue. */
+uint32_t lReceivedValue;
+BaseType_t xStatus;
+
+//As always in embedded systems, this task is implemented in an infinite loop.
+while(1)
+  {
+   
+    /* The first parameter is the queue from which data is to be received.  The
+    queue is created before the scheduler is started, and therefore before this
+    task runs for the first time.
+
+    The second parameter is the buffer into which the received data will be
+    placed.  In this case the buffer is simply the address of a variable that
+    has the required size to hold the received data.
+
+    the last parameter is the block time, the maximum amount of time that the
+    task should remain in the Blocked state to wait for data to be available should
+    the queue already be empty. 0 means don't block at all */
+    xStatus = xQueueReceive( xQueue, (uint32_t *)&lReceivedValue, 0 );
+
+    if( xStatus == pdPASS )
+    {
+      /* Data was successfully received from the queue, print out the received
+      value. */
+      Serial.print( "Received = ");
+      Serial.println( lReceivedValue );
+    }
+    else
+    {
+      /* We did not receive anything immediatly from the queue.
+      Except for the first data, thThis must be an error as the sending task 
+      is free running and will be continuously writing to the queue. */
+      Serial.println( "No data received" );
+    }
+
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+}
