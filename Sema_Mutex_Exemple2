@@ -78,7 +78,7 @@ static void prvNewPrintString( const char *pcString ) // this is a function, not
   /* The following line will only execute once the semaphore has been
   successfully obtained - so standard output can be accessed without any problems. */
   Serial.println(pcString);
-  Serial.flush();
+  Serial.flush();            // verifying that everything in the buffer has been sent
   
   xSemaphoreGive( xMutex );
 
