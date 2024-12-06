@@ -1,0 +1,98 @@
+/**
+ * @file ex06_2tskcont_1tskper.ino
+ * @brief 2 continous tasks with the same priority
+ * and a periodic task (with higher priority)
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date 13/8/2021   
+ */
+#include <Arduino_FreeRTOS.h>
+
+const char *pcTextForTask1 = "Task 1 is running";
+const char *pcTextForTask2 = "Task 2 is running";
+const char *pcTextForPeriodicTask = "Periodic task is running";
+
+
+/* The task functions. */
+void vContinuousProcessingTask( void *pvParameters );
+void vPeriodicTask( void *pvParameters );
+
+
+// the setup function runs once when you press reset or power the board
+void setup() {
+  
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+  
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for native USB, on LEONARDO, MICRO, YUN, and other 32u4 based boards.
+  }
+ 
+  /* Create two instances of the continuous processing task, both at priority 1. */
+  xTaskCreate( vContinuousProcessingTask, "Task 1", 200, (void*)pcTextForTask1, 1, NULL );
+  xTaskCreate( vContinuousProcessingTask, "Task 2", 200, (void*)pcTextForTask2, 1, NULL );
+
+  /* Create one instance of the periodic task at priority 2. */
+  xTaskCreate( vPeriodicTask, "Task 3", 200, (void*)pcTextForPeriodicTask, 2, NULL );
+
+  /* Start the scheduler so our tasks start executing. */
+ // vTaskStartScheduler(); // not necessary in last implementation - present in the initVariant() function of the Free RTOS library
+
+}
+
+void loop()
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+
+void vContinuousProcessingTask( void *pvParameters )
+{
+char *pcTaskName;
+
+  /* The string to print out is passed in via the parameter.  Cast this to a
+  character pointer. */
+  pcTaskName = ( char * ) pvParameters;
+
+  /* As per most tasks, this task is implemented in an infinite loop. */
+  for( ;; )
+  {
+    /* Print out the name of this task.  This task just does this repeatedly
+    without ever blocking or delaying. */
+    Serial.println(pcTaskName);
+    //vTaskDelay( 100 / portTICK_PERIOD_MS );
+  }
+}
+/*-----------------------------------------------------------*/
+
+void vPeriodicTask( void *pvParameters )
+{
+TickType_t xLastWakeTime;
+char *pcTaskName;
+
+ /* The string to print out is passed in via the parameter.  Cast this to a
+  character pointer. */
+  pcTaskName = ( char * ) pvParameters;
+
+
+  /* The xLastWakeTime variable needs to be initialized with the current tick
+  count.  Note that this is the only time we access this variable.  From this
+  point on xLastWakeTime is managed automatically by the vTaskDelayUntil()
+  API function. */
+  xLastWakeTime = xTaskGetTickCount();
+
+  /* As per most tasks, this task is implemented in an infinite loop. */
+  for( ;; )
+  {
+    /* Print out the name of this task. */
+     Serial.println(pcTaskName);
+ 
+    /* We want this task to execute exactly every 500 milliseconds. */
+    vTaskDelayUntil( &xLastWakeTime, ( 500 / portTICK_PERIOD_MS ) );
+  }
+}
+
+
