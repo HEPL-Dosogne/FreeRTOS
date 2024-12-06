@@ -1,0 +1,145 @@
+/**
+ * @file ex13_queue_int.ino
+ * @brief use a queue from interrupt to give data to a task and to awake it
+ * Use a software interrupt (pin 3 of CPU). 
+ * This interrupt will be raised by a periodic task 
+ * FreeRTOS API reference : https://www.freertos.org/a00106.html 
+ * @author philippe.camus@hepl.be from examples suite of FreeRTOS
+ * @date 2/11/2019   
+ */
+#include <Arduino_FreeRTOS.h>
+#include <queue.h>
+
+/* The tasks to be created. */
+static void vInterruptGenerator( void *pvParameters );
+static void vStringPrinter( void *pvParameters );
+
+/*-----------------------------------------------------------*/
+
+/* The service routine for the interrupt.  This is the interrupt that the task
+will be synchronized with. */
+static void vExampleInterruptHandler( void );
+
+/* Declare two variables of type QueueHandle_t.  One queue will be read from
+within an ISR, the other will be written to from within an ISR. */
+QueueHandle_t xStringQueue;
+
+// pin to generate interrupts
+const uint8_t interruptPin = 3;
+
+// the setup function runs once when you press reset or power the board
+void setup() 
+{
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+ 
+  /* Install the interrupt handler. */
+  pinMode(interruptPin, OUTPUT);
+  // pin 3 interrupton rising edge
+  attachInterrupt(digitalPinToInterrupt(interruptPin), vExampleInterruptHandler, RISING);  
+
+  /* Before a queue is used it must be explicitly created.  The queue is created
+  to hold a maximum of 5 character pointers. */
+  xStringQueue = xQueueCreate( 5, sizeof( char * ) );
+  
+  /* Create the task that simulates the external interrupt.  
+  The task is created at priority 1. */
+  xTaskCreate( vInterruptGenerator, "IntGen", 200, NULL, 1, NULL );
+
+  /* Create the task that prints out the strings sent to it from the interrupt
+  service routine.  This task is created at the higher priority of 2. */
+  xTaskCreate( vStringPrinter, "String", 200, NULL, 3, NULL );
+ 
+ //Start the scheduler so our tasks start executing.
+  vTaskStartScheduler(); // not necessary in last implementation
+                 // present in the initVariant() function of the Free RTOS library
+  
+}
+
+void loop()
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*--------------------------------------------------*/
+/*---------------------- Tasks ---------------------*/
+/*--------------------------------------------------*/
+static void vInterruptGenerator( void *pvParameters )
+{
+TickType_t xLastExecutionTime;
+
+  /* Initialize the variable used by the call to vTaskDelayUntil(). */
+  xLastExecutionTime = xTaskGetTickCount();
+
+while(1)
+  {
+    /* This is a periodic task.  Block until it is time to run again.
+    The task will execute every 200ms. */
+    vTaskDelayUntil( &xLastExecutionTime, 200 / portTICK_PERIOD_MS );
+
+    /* Send an incrementing number to the queue five times.  These will be
+    read from the queue by the interrupt service routine.  A block time is
+    not specified. */
+    
+    /* Force an interrupt so the interrupt service routine can read the
+    values from the queue. */
+    Serial.println( "Generator task - About to generate an interrupt." );
+
+    // bit banging interrupt line
+    digitalWrite(interruptPin, LOW);
+    digitalWrite(interruptPin, HIGH);// rising edge transition creates interrupt
+
+    Serial.println( "Generator task - Interrupt generated." );
+    Serial.println( " ");
+  }
+}
+/*-----------------------------------------------------------*/
+
+static void vStringPrinter( void *pvParameters )
+{
+char *pcString;
+
+while(1)
+  {
+    /* Block on the queue to wait for data to arrive. */
+    xQueueReceive( xStringQueue, &pcString, portMAX_DELAY );
+
+    /* Print out the string received. */
+    Serial.println( pcString );
+  }
+}
+/*-----------------------------------------------------------*/
+
+static void vExampleInterruptHandler( void )
+{
+static BaseType_t xHigherPriorityTaskWoken;
+static uint8_t select=0;
+
+/* The strings are declared static const to ensure they are not allocated to the
+interrupt service routine stack, and exist even when the interrupt service routine
+is not executing. */
+static const char *pcStrings[] =
+{
+  "String 0",
+  "String 1",
+  "String 2",
+  "String 3"
+};
+
+  xHigherPriorityTaskWoken = pdFALSE;
+  
+  xQueueSendToBackFromISR( xStringQueue, &pcStrings[ select ], (BaseType_t*)&xHigherPriorityTaskWoken );
+  select++;
+  if (select>=4) select=0;
+ 
+  /* Did receiving on a queue or sending on a queue unblock a task that has a
+  priority higher than the currently executing task?  
+  If so, force a context switch here. */
+  if( xHigherPriorityTaskWoken == pdTRUE )
+  {
+    /* NOTE: The syntax for forcing a context switch is different depending
+    on the port being used.  Refer to the examples for the port you are
+    using for the correct method to use! */
+    vPortYield();
+  }
+}
