@@ -1,0 +1,233 @@
+# Final Project : Thermostat
+
+Le but de ce projet, sur base des exemples et de la théorie vue en cours, est de créer un système de thermostat. 
+A l’aide du matériel fournit, le code mesure et affiche sur un écran lcd la température et la luminosité en temps réel ainsi que la température voulue,
+réglable grâce à un potentiomètre. Une led représente le système de chauffe et s’allume uniquement si la température demandée excède la température mesurée. 
+Le capteur de luminosité tant qu’à lui, permet d’adapter automatiquement la luminosité de l’écran lcd en fonction de l’environnement. 
+Ce code utilise le modèle de tâches productrices / consommatrices. Les capteurs de luminosité et de température ainsi que le potentiomètre sont les tâches productrices. 
+Le lcd et la led, les tâches consommatrices. 
+
+## Le code :
+// Dosogne Guillaume 12/2024
+// FreeRtos
+
+#include <Arduino_FreeRTOS.h>
+#include <queue.h>
+#include <Wire.h>
+#include <OneWire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DallasTemperature.h>
+
+#define HEATER_LED 9
+#define DS18B20_PIN 10
+#define POT A0
+#define LDR A1
+#define BACKLIGHT 2
+#define PROBE 13
+#define ID1 1    // Temperature
+#define ID2 2    // Luminosité
+#define ID3 3    // Setpoint temp
+
+OneWire oneWire(DS18B20_PIN);
+DallasTemperature sensors(&oneWire);
+
+struct TaskData
+{
+  uint8_t id;
+  uint16_t value;
+};
+
+/* LCD */
+LiquidCrystal_I2C lcd(0x27,20,2);
+
+/* Declare a variable of type QueueHandle_t */
+QueueHandle_t xLCDQueue;
+QueueHandle_t xHeaterQueue;
+
+void setup() 
+{
+  Serial.begin(9600);
+  sensors.begin();
+
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0,0);
+
+  pinMode(HEATER_LED, OUTPUT);
+  pinMode(BACKLIGHT, OUTPUT);
+
+  /* Create explicitly the queue. It hold a maximum of 5 character pointers. */
+  xLCDQueue = xQueueCreate( 5, sizeof(TaskData));
+  xHeaterQueue = xQueueCreate(5, sizeof(TaskData));
+
+  /* Check if the queue was created successfully. */
+  if( xLCDQueue != NULL && xHeaterQueue != NULL)
+  {
+    /* Creation of the tasks */
+
+    // Producteur
+    xTaskCreate(readLumTask, "ReadLum", 200, NULL, 1, NULL);
+    xTaskCreate(readTempTask, "ReadTemp", 200, NULL, 1, NULL);
+    xTaskCreate(SetpointTask, "Setpoint", 200, NULL, 1, NULL);
+    // Consommateur
+    xTaskCreate(printLCDTask, "LCD", 200, NULL, 0, NULL );
+    xTaskCreate(ControlHeaterTask, "ControlHeater", 200, NULL, 2, NULL);
+
+    /* Start the scheduler so our tasks start executing. */
+    vTaskStartScheduler();
+  }
+  else 
+  {
+    Serial.println( "Could not create the queue." );
+  }
+}
+
+void loop() 
+{
+  // Empty. Things are done in Tasks.
+}
+
+/*----------------------------------------------------------*/
+/*-------------------------- Tasks -------------------------*/
+/*----------------------------------------------------------*/
+
+/*---------------------- ReadTemp Task ---------------------*/
+static void readTempTask(void *pvParameters)
+{
+  TaskData data_to_send;
+  data_to_send.id = ID1;
+
+  while(1)
+  {
+  sensors.requestTemperatures();
+  data_to_send.value = sensors.getTempCByIndex(0);
+
+  xQueueSendToBack(xLCDQueue, &data_to_send, portMAX_DELAY);
+  xQueueSendToBack(xHeaterQueue, &data_to_send, portMAX_DELAY);
+
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+/*---------------------- ReadLum Task ---------------------*/
+static void readLumTask(void *pvParameters)
+{
+  TaskData data_to_send;
+  data_to_send.id = ID2;
+  uint8_t brightness = 0;
+
+  while(1)
+  {
+  data_to_send.value = analogRead(LDR);
+
+  brightness = map(data_to_send.value, 0, 1023, 0, 255);
+  analogWrite(BACKLIGHT, brightness);
+
+  xQueueSendToBack(xLCDQueue, &data_to_send, portMAX_DELAY);
+
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+/*---------------------- Setpoint Task ---------------------*/
+static void SetpointTask(void *pvParameters)
+{
+  TaskData data_to_send;
+  data_to_send.id = ID3;
+
+  while(1)
+  {
+  data_to_send.value = (analogRead(POT)/32)+4;  // 4 à 35
+
+  xQueueSendToBack(xLCDQueue, &data_to_send, portMAX_DELAY);
+  xQueueSendToBack(xHeaterQueue, &data_to_send, portMAX_DELAY);
+
+  vTaskDelay(200 / portTICK_PERIOD_MS);
+  }
+}
+
+/*---------------------- ControlHeater Task ---------------------*/
+static void ControlHeaterTask(void *pvParameters)
+{
+  TaskData data_received;
+
+  uint16_t temperature = 0; // temperature mesurée
+  uint16_t Setpoint = 0;    // temperature voulue
+
+  while(1)
+  {
+  if (xQueueReceive(xHeaterQueue, (TaskData *)&data_received, portMAX_DELAY)) {
+    switch (data_received.id){
+    case ID1:
+      temperature = data_received.value;
+      break;
+
+    case ID3:
+      Setpoint = data_received.value;
+      break;
+      
+    default:
+      Serial.println("Incorrect ID for Heater Queue");
+      break;
+    }
+  }
+
+  if (Setpoint > temperature){
+    digitalWrite(HEATER_LED, HIGH); // Heater ON
+  }
+  else{
+    digitalWrite(HEATER_LED, LOW);  // Heater OFF
+  }
+  vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
+
+/*---------------------- PrintLCD Task ---------------------*/
+static void printLCDTask(void *pvParameters)
+{
+  TaskData data_received;
+
+  uint16_t Temp = 0;       // Température mesurée
+  uint16_t Lum = 0;        // Luminosité
+  uint16_t Setpoint = 0;   // Température voulue
+
+  while (1)
+  {
+    // Lire les données depuis la file d'attente
+    if (xQueueReceive(xLCDQueue, (TaskData *)&data_received, portMAX_DELAY))
+    {
+      switch (data_received.id){
+      case ID1: // Température
+        Temp = data_received.value;
+        break;
+
+      case ID2: // Luminosité
+        Lum = data_received.value;
+        break;
+
+      case ID3: // Température voulue
+        Setpoint = data_received.value;
+        break;
+
+      default:
+        Serial.println("Incorrect ID for LCD Queue");
+        break;
+      }
+
+      // Affichage sur le LCD
+      //lcd.clear();
+      lcd.setCursor(3, 0);
+      lcd.print("Temp: ");
+      lcd.print(Temp);
+      lcd.print("C");
+
+      lcd.setCursor(0, 1);
+      lcd.print("Lum: ");
+      lcd.print(Lum);
+
+      lcd.print(" Set: ");
+      lcd.print(Setpoint);
+      lcd.print(" ");
+    }
+  }
+}
