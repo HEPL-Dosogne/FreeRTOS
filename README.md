@@ -16,4 +16,4 @@ Ce code utilise le modèle de tâches productrices / consommatrices. Les capteur
 
 Le code est trouvable [ici](FinalProject)
 
-![image]https://github.com/HEPL-Dosogne/FreeRTOS/blob/main/BlockDiagram_FinalProject.png 
+![image](https://github.com/HEPL-Dosogne/FreeRTOS/blob/main/BlockDiagram_FinalProject.png) 
