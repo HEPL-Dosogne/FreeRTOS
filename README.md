@@ -12,4 +12,4 @@ Le capteur de luminosité tant qu’à lui, permet d’adapter automatiquement l
 Ce code utilise le modèle de tâches productrices / consommatrices. Les capteurs de luminosité et de température ainsi que le potentiomètre sont les tâches productrices. 
 Le lcd et la led, les tâches consommatrices. 
 
-## Le code :
+[Le code](FinalProject)
